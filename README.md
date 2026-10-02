@@ -1,3 +1,200 @@
+# Caption Lab
+
+A small web app that runs two image captioning models side by side.
+
+- **Alpha**: YOLO11n (frozen) -> LDPv2 connector -> Flan-T5-small with LoRA
+- **Beta**: MobileCLIP-S0 (frozen) -> PixelShuffle connector -> SmolLM2-135M with LoRA
+
+The page shows the sample photos floating gently in the background. Click one and both models caption it. You can also upload your own photo.
+
+## 1. Requirements
+
+- Python 3.10 or newer (this project was run on Python 3.12)
+- About 3 GB of free disk space for libraries and downloaded base models
+- Internet access on the first run (base models download from Hugging Face)
+- A GPU is optional. Without one, captions still work but take longer.
+
+## 2. Folder layout
+
+```
+ImageCaptionUpdate/
+├── requirements.txt
+└── Image-Captioner-From-Scratch-Using-Image-Transformer-and-Text-Transformer/
+    ├── app.py                         <- Flask backend (run this)
+    ├── loading_testing_normalized.py  <- model classes, loaders, checkpoint paths
+    ├── yolo11n.pt                     <- YOLO11n weights used by Alpha
+    ├── alpha/
+    │   └── alpha_final_trainable/
+    │       └── alpha_final_trainable_fixed.pt
+    ├── beta/
+    │   └── stage2_best/
+    │       └── stage2_best_fixed.pt
+    ├── images/                        <- sample photos shown on the page
+    │   ├── baseball.jpg
+    │   ├── baseball2.jpg
+    │   ├── bear_.jpg
+    │   ├── bedroom.jpg
+    │   ├── cateshwar.jpeg
+    │   ├── double decker bus.jpg
+    │   ├── group_of_kids.jpg
+    │   ├── lady_mobile.jpg
+    │   ├── skate.jpg
+    │   ├── snow ski.jpg
+    │   ├── tennis.jpg
+    │   └── two_green_apple.jpg
+    ├── static/
+    │   └── index.html                 <- frontend
+    ├── mobileclip-s0-pixelshuffle-pooling-smollm2-135-2_.ipynb
+    ├── yolo11n-ldpv2-flan-t5-small-image-captioner5.ipynb
+    ├── README.md
+    └── LICENSE
+```
+
+Notes on the layout:
+
+- `requirements.txt` sits one level above the project folder. Install from there (section 3), then run the app from the project folder (section 4).
+- `app.py` imports `loading_testing_normalized.py`, so both files must stay in the same folder.
+- The checkpoint paths are set at the top of `loading_testing_normalized.py` (`ALPHA_CHECKPOINT_PATH`, `BETA_CHECKPOINT_PATH`). If you store the checkpoints elsewhere, edit them there. They use Windows-style backslashes. On macOS or Linux, change them to forward slashes, for example `alpha/alpha_final_trainable/alpha_final_trainable_fixed.pt`.
+- `yolo11n.pt` is found because `app.py` switches to its own folder at startup. Keep the file next to `app.py`.
+- A `__pycache__` folder appears after the first run. Ignore it.
+
+## 3. Install
+
+Open a terminal (PowerShell on Windows) in the `ImageCaptionUpdate` folder, the one that contains `requirements.txt`.
+
+Create and activate a virtual environment (recommended):
+
+```
+python -m venv .venv
+```
+
+Windows:
+
+```
+.venv\Scripts\activate
+```
+
+macOS / Linux:
+
+```
+source .venv/bin/activate
+```
+
+Install PyTorch first. Pick the command for your machine at https://pytorch.org/get-started/locally/ (the CPU-only and CUDA versions differ). A plain install looks like:
+
+```
+pip install torch torchvision
+```
+
+Then install the remaining libraries:
+
+```
+pip install -r requirements.txt
+```
+
+The web app also needs Flask. If `requirements.txt` does not already list it, run:
+
+```
+pip install flask
+```
+
+## 4. Run
+
+Move into the project folder and start the server:
+
+```
+cd Image-Captioner-From-Scratch-Using-Image-Transformer-and-Text-Transformer
+python app.py
+```
+
+The first start downloads the base models and can take a few minutes. The terminal prints progress and ends with the two "ready" messages. Then open:
+
+http://127.0.0.1:5000
+
+The status line under the page title confirms both models are loaded and shows which device they run on (cuda or cpu).
+
+## 5. Using the app
+
+**Sample photos**
+Click any floating photo. A sheet opens with the full image and two result panels. Alpha and Beta start together, each shows a loading state with a timer, and each caption appears as soon as that model finishes. The time shown is the model's inference time.
+
+**Your own photo**
+Use any of these:
+- Open the "Use your own photo" menu in the top right and choose Browse files.
+- Drag a photo from your computer and drop it anywhere on the page.
+- Paste an image from your clipboard.
+
+Uploads can be JPG, PNG, WebP, BMP or GIF, up to 20 MB. Photos are processed in memory and are not saved to disk.
+
+**Closing the result sheet**
+Press Esc, click outside the sheet, or use the close button.
+
+## 6. Adding or changing sample photos
+
+Drop image files into the `images/` folder and reload the page. The layout adjusts automatically so every photo fits on screen. Around 12 photos works best. Many more will make each one small.
+
+To use a different folder name, set the `IMAGES_DIR` environment variable before starting:
+
+Windows (PowerShell):
+
+```
+$env:IMAGES_DIR = "my_photos"
+python app.py
+```
+
+macOS / Linux:
+
+```
+IMAGES_DIR=my_photos python app.py
+```
+
+## 7. Changing the port or allowing other devices
+
+The last line of `app.py` controls this. It defaults to `host="127.0.0.1", port=5000`, which only your own computer can reach. To reach it from another device on your network, set `host="0.0.0.0"`. Only do this on a network you trust, since the app has no login.
+
+## 8. Troubleshooting
+
+**`ModuleNotFoundError: No module named 'loading_testing_normalized'`**
+You are not running from the project folder, or the file was renamed or moved. `app.py` and `loading_testing_normalized.py` must sit side by side.
+
+**`ModuleNotFoundError` for any other name**
+A library is missing. Install it with `pip install <name>`, with your virtual environment active.
+
+**`FileNotFoundError` for a `.pt` checkpoint**
+The checkpoint is not where `loading_testing_normalized.py` expects it. Check the layout in section 2 and the path constants at the top of that file.
+
+**Status line says the server is not responding**
+`app.py` is not running, or is still loading models. Check the terminal and reload the page once it prints that both models are ready.
+
+**Captions are slow**
+On CPU, each caption takes a few seconds, and Alpha uses beam search. A CUDA GPU is much faster. Alpha and Beta run one at a time on the server, so the second result appears after the first.
+
+**`Address already in use`**
+Another program is using port 5000. Close it, or change the port in the last line of `app.py`.
+
+**"Could not read the image"**
+The file format is not supported. HEIC photos from iPhones are not supported. Convert to JPG or PNG first.
+
+**Fonts look different**
+The page loads its fonts from Google Fonts. Offline, it falls back to system fonts, and everything still works.
+
+## 9. How it works
+
+- `app.py` loads both models once at startup and serves the page.
+- `GET /api/images` lists the photos in `images/`.
+- `POST /api/caption/alpha` and `POST /api/caption/beta` take either a gallery filename or an uploaded file and return the caption and inference time.
+- `static/index.html` is the whole frontend: no build step, no extra packages.
+
+
+
+
+
+
+
+
+
+
+
 # COCO Image Captioning — Blueprint Alpha & Blueprint Beta
 
 Two multimodal image-captioning implementations are presented here, both trained on the COCO 2017 captioning data but using substantially different visual-language bridges and language backbones.
